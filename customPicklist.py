@@ -57,10 +57,9 @@ def login():
     return [user, p1]
 
 ## Parse for proper argumets ##
-parser = argparse.ArgumentParser(description='This is a demo script by nixCraft.')
-parser.add_argument('-i','--input', help='Input file name',required=True)
-parser.add_argument('-o','--output',help='Output file name', required=True)
-parser.add_argument('-p','--print-style',help='(1) standard paper, (2) receipt paper')
+parser = argparse.ArgumentParser(description='This script generates a pull list HTML file from a plain text file of barcode numbers. Each library barcode number should be given its own line without punctuation. This is intended for use by LibLime Koka users withing the South Central Library System in Wisconsin.')
+parser.add_argument('-i','--input', help='Input file name (.txt)',required=True)
+parser.add_argument('-o','--output',help='Output file name (.html)', required=True)
 args = parser.parse_args()
 
 while True:
@@ -103,12 +102,6 @@ while True:
     break;
   else:
     print("\nIncorrect username or password, please try again.\n")
-
-## Parse for proper argumets ##
-parser = argparse.ArgumentParser(description='This is a demo script by nixCraft.')
-parser.add_argument('-i','--input', help='Input file name',required=True)
-parser.add_argument('-o','--output',help='Output file name', required=True)
-args = parser.parse_args()
 
 barcodes = [x.strip('\n') for x in open(str(args.input)).readlines()]
 barcodes = list(filter(None, barcodes))
