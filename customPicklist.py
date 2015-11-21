@@ -10,6 +10,7 @@ import datetime
 from dateutil.relativedelta import relativedelta
 from operator import itemgetter, attrgetter, methodcaller
 from bs4 import BeautifulSoup
+import sys
 
 ## Class to store picklist items ##
 class Item:
@@ -59,40 +60,49 @@ def login():
 parser = argparse.ArgumentParser(description='This is a demo script by nixCraft.')
 parser.add_argument('-i','--input', help='Input file name',required=True)
 parser.add_argument('-o','--output',help='Output file name', required=True)
+parser.add_argument('-p','--print-style',help='(1) standard paper, (2) receipt paper')
 args = parser.parse_args()
 
-## Attempt login ##
-loginCred = login()
+while True:
+  ## Attempt login ##
+  loginCred = login()
 
-## Begin HTML requests ##
-# Store the cookies and create an opener that will hold them
-cj = http.cookiejar.CookieJar()
-opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+  ## Begin HTML requests ##
+  # Store the cookies and create an opener that will hold them
+  cj = http.cookiejar.CookieJar()
+  opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 
-# Add our headers
-opener.addheaders = [('User-agent', 'KohaTesting')]
+  # Add our headers
+  opener.addheaders = [('User-agent', 'KohaTesting')]
 
-# Install our opener (note that this changes the global opener to the one
-# we just made, but you can also just call opener.open() if you want)
-urllib.request.install_opener(opener)
+  # Install our opener (note that this changes the global opener to the one
+  # we just made, but you can also just call opener.open() if you want)
+  urllib.request.install_opener(opener)
 
-# The action/ target from the form
-authentication_url = 'http://scls-staff.kohalibrary.com/cgi-bin/koha/mainpage.pl'
+  # The action/ target from the form
+  authentication_url = 'http://scls-staff.kohalibrary.com/cgi-bin/koha/mainpage.pl'
 
-# Input parameters we are going to send
-payload = {
-  'branch': '',
-  'userid': loginCred[0],
-  'password': loginCred[1]
-  }
+  # Input parameters we are going to send
+  payload = {
+    'branch': '',
+    'userid': loginCred[0],
+    'password': loginCred[1]
+    }
 
-# Use urllib to encode the payload
-data = urllib.parse.urlencode(payload)
-data = data.encode('utf8')
+  # Use urllib to encode the payload
+  data = urllib.parse.urlencode(payload)
+  data = data.encode('utf8')
 
-# Build our Request object (supplying 'data' makes it a POST)
-req = urllib.request.Request(authentication_url, data)
-urllib.request.urlopen(req)
+  # Build our Request object (supplying 'data' makes it a POST)
+  req = urllib.request.Request(authentication_url, data)
+  resp = urllib.request.urlopen(req)
+  html = resp.read()
+  soup = BeautifulSoup(html, 'html.parser')
+  
+  if soup.find(id="login_error") == None:
+    break;
+  else:
+    print("\nIncorrect username or password, please try again.\n")
 
 ## Parse for proper argumets ##
 parser = argparse.ArgumentParser(description='This is a demo script by nixCraft.')
@@ -102,47 +112,52 @@ args = parser.parse_args()
 
 barcodes = [x.strip('\n') for x in open(str(args.input)).readlines()]
 barcodes = list(filter(None, barcodes))
-barcodeList = ""
-for barcode in barcodes:
-  barcodeList += barcode + '\r\n'
 
-# Input parameters we are going to send
-payload = {
-  'op': 'show',
-  'barcodelist': str(barcodeList)
-  }
-
-# Use urllib to encode the payload
-data = urllib.parse.urlencode(payload)
-data = data.encode('utf8')
-
-url = 'http://scls-staff.kohalibrary.com/cgi-bin/koha/tools/batchMod.pl'
-req = urllib.request.Request(url, data)
-
-# Make the request and read the response
-resp = urllib.request.urlopen(req)
-html = resp.read()
-
-soup = BeautifulSoup(html, 'html.parser')
-
-results = soup.find(id="itemst").tbody.find_all('tr')
 pullItems = []
+for barcode in barcodes:
+  # Input parameters we are going to send
+  payload = {
+    'search-form': '39078053952421'#str(barcode)
+    }
 
-for i in range(len(results)):
-  result = results[i].find_all('td')
-  pullItems.append(Item(result[1].a.get_text(),result[6].get_text(),result[11].get_text(),result[15].get_text(),result[16].get_text()))
+  # Use urllib to encode the payload
+  data = urllib.parse.urlencode(payload)
+  data = data.encode('utf8')
+
+  url = 'http://scls-staff.kohalibrary.com/cgi-bin/koha/catalogue/moredetail.pl'
+  req = urllib.request.Request(url, data)
+
+  # Make the request and read the response
+  resp = urllib.request.urlopen(req)
+  html = resp.read()
+
+  soup = BeautifulSoup(html, 'html.parser')
+  itemEditURL = soup.select(".yui-g a")[0].get("href")
+  print(itemEditURL)
+  sys.exit(0)
+  req = urllib.request.Request(str(itemEditURL))
+  
+  # Make the request and read the response
+  resp = urllib.request.urlopen(req)
+  html = resp.read()
+  
+  soup = BeautifulSoup(html, 'html.parser')
+  results = soup.find('cataloguing_additem_newitem').select('.subfield_line');
+  print(results)
+  sys.exit(0)
+
+  for i in range(len(results)):
+    result = results[i].find_all('td')
+    pullItems.append(Item(result[1].a.get_text(),result[6].get_text(),result[10].get_text(),result[14].get_text(),result[15].get_text()))
 
 sortedItems = sorted(pullItems, key=attrgetter('location','collection','callNum'))
 
 f = open(str(args.output), 'w')
-f.write(datetime.date.today().strftime('This list was generated on:       %x') + '\n')
-f.write((datetime.date.today() + relativedelta(months=+6)).strftime('These items should be pulled on:  %x') + '\n\n')
-f.write("Title\tCollection\tLocation\tCall #\n----- Barcode\n\n")
+f.write("<html>\n<head>\n<style>\nth{font-weight: bold;}td{padding:5px 7px;}</style></head>\n<body>\n")
+f.write("<p>"+datetime.date.today().strftime('This list was generated on:       %x') + '<br />')
+f.write((datetime.date.today() + relativedelta(months=+6)).strftime('These items should be pulled on:  %x') + '</p>')
+f.write("<table>\n<tr>\n<th>Call #</th>\n<th>Title</th>\n<th>Collection</th>\n<th>Location</th>\n<th>Barcode</th>\n</tr>\n")
 for item in sortedItems:
-  f.write(str(item.title)+"\t"+str(item.collection)+"\t"+str(item.location)+"\t"+str(item.callNum)+"\n----- Barcode: "+str(item.barcode)+"\n\n")
-#  f.write("Title:       " + str(item.title) + '\n')
-#  f.write("Collection:  " + str(item.collection) + '\n')
-#  f.write("Location:    " + str(item.location) + '\n')
-#  f.write("Call #:      " + str(item.callNum) + '\n')
-#  f.write("Barcode:     " + str(item.barcode) + '\n\n')
+  f.write("<tr>\n<td>"+str(item.callNum)+"</td>\n<td>"+str(item.title)+"</td>\n<td>"+str(item.collection)+"</td>\n<td>"+str(item.location)+"</td>\n<td>"+str(item.barcode)+"</td>\n</tr>\n")
+f.write("</table>\n</body>\n</html>")
 f.close()
