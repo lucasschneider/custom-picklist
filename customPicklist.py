@@ -112,43 +112,53 @@ args = parser.parse_args()
 
 barcodes = [x.strip('\n') for x in open(str(args.input)).readlines()]
 barcodes = list(filter(None, barcodes))
-
-pullItems = []
+barcodeList = ""
 for barcode in barcodes:
-  # Input parameters we are going to send
-  payload = {
-    'search-form': '39078053952421'#str(barcode)
-    }
+  barcodeList += barcode + '\r\n'
 
-  # Use urllib to encode the payload
-  data = urllib.parse.urlencode(payload)
-  data = data.encode('utf8')
+# Input parameters we are going to send
+payload = {
+  'op': 'show',
+  'barcodelist': str(barcodeList)
+  }
 
-  url = 'http://scls-staff.kohalibrary.com/cgi-bin/koha/catalogue/moredetail.pl'
-  req = urllib.request.Request(url, data)
+# Use urllib to encode the payload
+data = urllib.parse.urlencode(payload)
+data = data.encode('utf8')
 
-  # Make the request and read the response
-  resp = urllib.request.urlopen(req)
-  html = resp.read()
+url = 'http://scls-staff.kohalibrary.com/cgi-bin/koha/tools/batchMod.pl'
+req = urllib.request.Request(url, data)
 
-  soup = BeautifulSoup(html, 'html.parser')
-  itemEditURL = soup.select(".yui-g a")[0].get("href")
-  print(itemEditURL)
-  sys.exit(0)
-  req = urllib.request.Request(str(itemEditURL))
-  
-  # Make the request and read the response
-  resp = urllib.request.urlopen(req)
-  html = resp.read()
-  
-  soup = BeautifulSoup(html, 'html.parser')
-  results = soup.find('cataloguing_additem_newitem').select('.subfield_line');
-  print(results)
-  sys.exit(0)
+# Make the request and read the response
+resp = urllib.request.urlopen(req)
+html = resp.read()
 
-  for i in range(len(results)):
-    result = results[i].find_all('td')
-    pullItems.append(Item(result[1].a.get_text(),result[6].get_text(),result[10].get_text(),result[14].get_text(),result[15].get_text()))
+soup = BeautifulSoup(html, 'html.parser')
+
+headers = soup.find(id="itemst").thead.find_all('th')
+titleIdx = 0
+collectionIdx = 0
+locationIdx = 0
+callNumIdx = 0
+barcodeIdx = 0
+for i in range(len(headers)):
+  if headers[i].get_text().strip() == "Title":
+    titleIdx = i
+  if headers[i].get_text().strip() == "Collection code":
+    collectionIdx = i
+  if headers[i].get_text().strip() == "Shelving location":
+    locationIdx = i
+  if headers[i].get_text().strip() == "Full call number":
+    callNumIdx = i
+  if headers[i].get_text().strip() == "Barcode":
+    barcodeIdx = i
+
+results = soup.find(id="itemst").tbody.find_all('tr')
+pullItems = []
+
+for i in range(len(results)):
+  result = results[i].find_all('td')
+  pullItems.append(Item(result[titleIdx].a.get_text(),result[collectionIdx].get_text(),result[locationIdx].get_text(),result[callNumIdx].get_text(),result[barcodeIdx].get_text()))
 
 sortedItems = sorted(pullItems, key=attrgetter('location','collection','callNum'))
 
