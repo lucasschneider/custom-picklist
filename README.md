@@ -6,4 +6,4 @@ This script generates a pull list HTML file from a plain text file of barcode nu
 * BeautifulSoup
 
 ## Usage
-> poolPL.py [-h] [-b BRANCHCODE] -i INPUT [-o OUTPUT]
+` poolPL.py [-h] [-b BRANCHCODE] -i INPUT [-o OUTPUT]
