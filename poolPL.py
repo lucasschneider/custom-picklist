@@ -1,16 +1,15 @@
-#!/usr/bin/python
+ #!/usr/bin/python
 
 import getpass
 import argparse
 import http.cookiejar
-import urllib
 import urllib.request
-#import urllib.error
 import datetime
 from dateutil.relativedelta import relativedelta
 from operator import itemgetter, attrgetter, methodcaller
 from bs4 import BeautifulSoup
 import sys
+import os
 
 ## Class to store picklist items ##
 class Item:
@@ -38,9 +37,28 @@ def login():
 
 ## Parse for proper argumets ##
 parser = argparse.ArgumentParser(description='This script generates a pull list HTML file from a plain text file of barcode numbers. Each library barcode number should be given its own line without punctuation. This is intended for use by LibLime Koka users withing the South Central Library System in Wisconsin.')
-parser.add_argument('-i','--input', help='Input file name (.txt)',required=True)
-parser.add_argument('-o','--output',help='Output file name (.html)', nargs='?', required=False)
+parser.add_argument('-b','--branchcode',help='Override the library branch code', nargs='?', required=False)
+parser.add_argument('-i','--input', help='Input text file name (.txt)',required=True)
+parser.add_argument('-o','--output',help='Output web file name (.html)', required=False)
 args = parser.parse_args()
+
+if not args.branchcode:
+  print("You must specify a branch code if using the -b flag.")
+  sys.exit(0)
+
+inFile = str(args.input)
+
+if inFile[-4:] != '.txt':
+  print("The file \"" + inFile + "\" does not appear to be a text file.\nPlease check the file type (.txt) and try again.")
+  sys.exit(0)
+  
+try:
+  barcodes = [x.strip('\n') for x in open(inFile).readlines()]
+except IOError:
+  print("The text file \"" + inFile + "\" could not be found.\nPlease try again with a valid filepath.") 
+  sys.exit(0)
+  
+
 
 while True:
   ## Attempt login ##
@@ -83,7 +101,6 @@ while True:
   else:
     print("\nIncorrect username or password, please try again.\n")
 
-barcodes = [x.strip('\n') for x in open(str(args.input)).readlines()]
 barcodes = list(filter(None, barcodes))
 barcodeList = ""
 for barcode in barcodes:
@@ -142,7 +159,7 @@ results = soup.find(id="itemst").tbody.find_all('tr')
 pullItems = []
 thisMonth = datetime.date.today().strftime('%m/%Y')
 pullMonth = (datetime.date.today() + relativedelta(months=+6)).strftime('%m/%Y')
-branchCode = str.upper(loginCred[0][:3])
+branchCode = str.upper(loginCred[0][:3]) if not args.branchcode else args.branchcode
 
 for i in range(len(results)):
   result = results[i].find_all('td')
@@ -193,3 +210,5 @@ for item in sortedItems:
   f.write("<tr>\n<td>"+str(item.callNum)+"</td>\n<td>"+str(item.title)+"</td>\n<td>"+str(item.barcode)+"</td>\n<td>"+str(item.status)+"</td>\n<td>"+str(item.checkedOut)+"</td>\n</tr>\n")
 f.write("</table>\n</body>\n</html>")
 f.close()
+
+print ('Output saved to:\n' + os.getcwd() + outFile)
