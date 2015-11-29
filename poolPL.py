@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 import sys
 import os
 
+directorySlash = '\\' if os.name == 'nt' else '/'
+
 ## Class to store picklist items ##
 class Item:
   def __init__(self, t, c, l, cn, b, s, co):
@@ -36,29 +38,23 @@ def login():
     return [user, p1]
 
 ## Parse for proper argumets ##
-parser = argparse.ArgumentParser(description='This script generates a pull list HTML file from a plain text file of barcode numbers. Each library barcode number should be given its own line without punctuation. This is intended for use by LibLime Koka users withing the South Central Library System in Wisconsin.')
-parser.add_argument('-b','--branchcode',help='Override the library branch code', nargs='?', required=False)
-parser.add_argument('-i','--input', help='Input text file name (.txt)',required=True)
-parser.add_argument('-o','--output',help='Output web file name (.html)', required=False)
+parser = argparse.ArgumentParser(description='This script generates a pull list HTML file from a plain text file of barcode numbers. Each library barcode number should be given its own line without punctuation. This is intended for use by LibLime Koka users within the South Central Library System in Wisconsin.')
+parser.add_argument('-b','--branchcode',help='Override the library branch code', nargs='?')
+parser.add_argument('-i','--input', help='Input text filename (.txt); Relative to the present working directory',required=True)
+parser.add_argument('-o','--output',help='Output web filename (.html); Relative to the input file')
 args = parser.parse_args()
-
-if not args.branchcode:
-  print("You must specify a branch code if using the -b flag.")
-  sys.exit(0)
 
 inFile = str(args.input)
 
 if inFile[-4:] != '.txt':
-  print("The file \"" + inFile + "\" does not appear to be a text file.\nPlease check the file type (.txt) and try again.")
+  print("The file \"" + os.getcwd() + directorySlash + inFile + "\" does not appear to be a text file.\nPlease check the file type (.txt) and try again.")
   sys.exit(0)
   
 try:
   barcodes = [x.strip('\n') for x in open(inFile).readlines()]
 except IOError:
-  print("The text file \"" + inFile + "\" could not be found.\nPlease try again with a valid filepath.") 
+  print("The text file \"" + os.getcwd() + directorySlash + inFile + "\" could not be found.\nPlease try again with a valid filepath.") 
   sys.exit(0)
-  
-
 
 while True:
   ## Attempt login ##
@@ -70,7 +66,7 @@ while True:
   opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 
   # Add our headers
-  opener.addheaders = [('User-agent', 'KohaTesting')]
+  opener.addheaders = [('User-agent', 'KohaPoolPicklist')]
 
   # Install our opener (note that this changes the global opener to the one
   # we just made, but you can also just call opener.open() if you want)
@@ -132,7 +128,9 @@ locationIdx = 0
 callNumIdx = 0
 barcodeIdx = 0
 withdrawnIdx = 0
+lostIdx = 0
 damagedIdx = 0
+otherStatusIdx = 0
 notForLoanIdx = 0
 checkedOutIdx = 0
 for i in range(len(headers)):
@@ -148,8 +146,12 @@ for i in range(len(headers)):
     barcodeIdx = i
   elif headers[i].get_text().strip() == "Withdrawn status":
     withdrawnIdx = i
+  elif headers[i].get_text().strip() == "Lost status":
+    lostIdx = i
   elif headers[i].get_text().strip() == "Damaged status":
     damagedIdx = i
+  elif headers[i].get_text().strip() == "Other item status":
+    otherStatusIdx = i
   elif headers[i].get_text().strip() == "Not for loan status":
     notForLoanIdx = i
   elif headers[i].get_text().strip() == "Checked out":
@@ -157,33 +159,27 @@ for i in range(len(headers)):
 
 results = soup.find(id="itemst").tbody.find_all('tr')
 pullItems = []
-thisMonth = datetime.date.today().strftime('%m/%Y')
-pullMonth = (datetime.date.today() + relativedelta(months=+6)).strftime('%m/%Y')
+thisMonth = datetime.date.today().strftime('%m-%Y')
+pullMonth = (datetime.date.today() + relativedelta(months=+6)).strftime('%m-%Y')
 branchCode = str.upper(loginCred[0][:3]) if not args.branchcode else args.branchcode
 
 for i in range(len(results)):
   result = results[i].find_all('td')
   
-  withdrawn = str(result[withdrawnIdx].get_text().strip())
-  damaged = str(result[damagedIdx].get_text().strip())
-  notForLoan = str(result[notForLoanIdx].get_text().strip())
-  itemStatus = "OK"
+  withdrawn = str(result[withdrawnIdx].get_text().strip()) if withdrawnIdx != 0 else ""
+  lost = str(result[lostIdx].get_text().strip()) if lostIdx != 0 else ""
+  damaged = str(result[damagedIdx].get_text().strip()) if damagedIdx != 0 else ""
+  otherStatus = str(result[otherStatusIdx].get_text().strip()) if otherStatusIdx != 0 else ""
+  notForLoan = str(result[notForLoanIdx].get_text().strip())  if notForLoanIdx != 0 else ""
   checkedOut = ""
   
-  if withdrawn and damaged and notForLoan:
-    itemStatus = withdrawn + "<br />" + damaged + "<br />" + notForLoan
-  elif withdrawn and damaged:
-    itemStatus = withdrawn + "<br />" + damaged
-  elif withdrawn and notForLoan:
-    itemStatus = withdrawn + "<br />" + notForLoan
-  elif damaged and notForLoan:
-    itemStatus = damaged + "<br />" + notForLoan
-  elif withdrawn:
-    itemStatus = withdrawn
-  elif damaged:
-    itemStatus = damaged
-  elif notForLoan:
-    itemStatus = notForLoan
+  itemStatus = withdrawn;
+  itemStatus += "<br />" + lost if itemStatus else lost
+  itemStatus += "<br />" + damaged if itemStatus else damaged
+  itemStatus += "<br />" + otherStatus if itemStatus else otherStatus
+  itemStatus += "<br />" + notForLoan if itemStatus else notForLoan
+  if not itemStatus:
+    itemStatus = "OK"
   
   if checkedOutIdx != 0:
     checkedOutStr = str(result[checkedOutIdx].get_text().strip())
@@ -191,14 +187,14 @@ for i in range(len(results)):
       checkedOut = "Yes"
   pullItems.append(Item(result[titleIdx].a.get_text(),result[collectionIdx].get_text(),result[locationIdx].get_text(),result[callNumIdx].get_text(),result[barcodeIdx].get_text(), itemStatus, checkedOut))
 
-sortedItems = sorted(pullItems, key=attrgetter('location','collection','callNum'))
+sortedItems = sorted(pullItems, key=attrgetter('location','collection','callNum','title'))
 
 if args.output:
   outFile = str(args.output)
   if outFile[-5:] != '.html':
     outFile += '.html'
 else:
-  outFile = "picklist.html"
+  outFile = str(os.path.dirname(os.path.realpath(inFile)) + directorySlash + branchCode + "-POOL-" + sortedItems[0].collection.replace(' ','-') + "-PULL-ON-" + pullMonth + ".html")
 
 f = open(outFile, 'w')
 f.write("<html>\n<head>\n<style>\nth{font-weight: bold;}td{padding:5px 7px;}</style></head>\n<body>\n")
@@ -211,4 +207,4 @@ for item in sortedItems:
 f.write("</table>\n</body>\n</html>")
 f.close()
 
-print ('Output saved to:\n' + os.getcwd() + outFile)
+print ('Output saved to:\n' + outFile)
